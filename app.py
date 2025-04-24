@@ -92,7 +92,7 @@ def get_weather():
     summary = f"{now.strftime('%H')}시 기준 | 🌡️ {data['기온']} | {data['하늘']} | {data['강수형태']} | 확률 {data['강수확률']} | 💧습도 {data['습도']} | 🍃바람 {data['바람']}"
     return summary
 
-# ✅ GPT 대본 생성
+# ✅ AI아나운서 뉴스 대본
 def generate_gpt_ment(summary):
     prompt = f"""
     다음은 오늘 대전 KAIST 지역의 기상청 요약입니다:
