@@ -1,21 +1,25 @@
 import streamlit as st
 import requests
 import datetime
-import time
 import urllib3
+import time
 from openai import OpenAI
 
-# 🚨 시크릿에서 API 키 불러오기
+# ✅ API 키 불러오기
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 bot_token = st.secrets["telegram"]["bot_token"]
 chat_id = st.secrets["telegram"]["chat_id"]
 did_api_key = st.secrets["d_id"]["api_key"]
 image_url = st.secrets["d_id"]["image_url"]
-nx, ny = 60, 121
+service_key = st.secrets["kma"]["service_key"]
 
+# ✅ 대전 KAIST 격자 좌표
+nx, ny = 67, 100
+
+# ✅ SSL 경고 무시
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 💡 base_time 계산
+# ✅ base_time 계산
 def get_base_time():
     now = datetime.datetime.now()
     hour = now.hour
@@ -29,7 +33,7 @@ def get_base_time():
     elif hour < 23: return now.strftime("%Y%m%d"), "2000"
     else: return now.strftime("%Y%m%d"), "2300"
 
-# 🌤️ 날씨 데이터 가져오기
+# ✅ 실황 + 예보 불러오기
 def get_weather():
     now = datetime.datetime.now()
     base_date = now.strftime("%Y%m%d")
@@ -41,11 +45,17 @@ def get_weather():
     forecast = {"하늘": "?", "강수형태": "?", "강수확률": "?"}
 
     try:
-        r = requests.get(
-            "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst",
-            params={"serviceKey": st.secrets["kma"]["service_key"], "pageNo": "1", "numOfRows": "100",
-                    "dataType": "JSON", "base_date": base_date, "base_time": base_time,
-                    "nx": nx, "ny": ny}, verify=False)
+        r = requests.get("http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst",
+                         params={
+                             "serviceKey": service_key,
+                             "pageNo": "1",
+                             "numOfRows": "100",
+                             "dataType": "JSON",
+                             "base_date": base_date,
+                             "base_time": base_time,
+                             "nx": nx,
+                             "ny": ny,
+                         }, verify=False)
         items = r.json()['response']['body']['items']['item']
         for i in items:
             if i['category'] == 'T1H': weather['기온'] = f"{i['obsrValue']}℃"
@@ -54,11 +64,17 @@ def get_weather():
     except: pass
 
     try:
-        r = requests.get(
-            "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst",
-            params={"serviceKey": st.secrets["kma"]["service_key"], "pageNo": "1", "numOfRows": "1000",
-                    "dataType": "JSON", "base_date": fcst_date, "base_time": fcst_time,
-                    "nx": nx, "ny": ny}, verify=False)
+        r = requests.get("http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst",
+                         params={
+                             "serviceKey": service_key,
+                             "pageNo": "1",
+                             "numOfRows": "1000",
+                             "dataType": "JSON",
+                             "base_date": fcst_date,
+                             "base_time": fcst_time,
+                             "nx": nx,
+                             "ny": ny,
+                         }, verify=False)
         items = r.json()['response']['body']['items']['item']
         for item in items:
             if item['fcstTime'][:2] == current_hour:
@@ -70,56 +86,59 @@ def get_weather():
                     forecast['강수확률'] = f"{item['fcstValue']}%"
     except: pass
 
-    data = {**weather, **forecast}
-    return f"{now.strftime('%H')}시 기준 | 🌡️ {data['기온']} | {data['하늘']} | {data['강수형태']} | 확률 {data['강수확률']} | 💧습도 {data['습도']} | 🍃바람 {data['바람']}"
+    data = {}
+    data.update(weather)
+    data.update(forecast)
+    summary = f"{now.strftime('%H')}시 기준 | 🌡️ {data['기온']} | {data['하늘']} | {data['강수형태']} | 확률 {data['강수확률']} | 💧습도 {data['습도']} | 🍃바람 {data['바람']}"
+    return summary
 
-# 🧠 GPT로 멘트 생성
+# ✅ GPT 대본 생성
 def generate_gpt_ment(summary):
     prompt = f"""
-    다음은 수원시의 실시간 날씨 요약입니다:
+    다음은 오늘 대전 KAIST 지역의 기상청 요약입니다:
     {summary}
-    이 내용을 바탕으로 15초 내외의 짧고 친근한 뉴스 앵커 멘트를 작성해주세요.
+    이 정보를 바탕으로 친근하고 간결한 아나운서 멘트를 작성해주세요.
     """
-    res = client.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
-    return res.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
 
-# 🎥 D-ID 영상 생성
+# ✅ D-ID 영상 생성
 def create_did_video(text):
-    res = requests.post(
-        "https://api.d-id.com/talks",
-        headers={"Authorization": f"Basic {did_api_key}"},
-        json={
-            "script": {"type": "text", "input": text, "provider": {"type": "microsoft", "voice_id": "ko-KR-SunHiNeural"}},
-            "source_url": image_url
-        }
-    )
+    res = requests.post("https://api.d-id.com/talks",
+                        headers={"Authorization": f"Basic {did_api_key}"},
+                        json={
+                            "script": {"type": "text", "input": text,
+                                       "provider": {"type": "microsoft", "voice_id": "ko-KR-SunHiNeural"}},
+                            "source_url": image_url
+                        })
     return res.json().get("id")
 
 def get_video_url(talk_id):
     while True:
-        res = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers={"Authorization": f"Basic {did_api_key}"})
+        res = requests.get(f"https://api.d-id.com/talks/{talk_id}",
+                           headers={"Authorization": f"Basic {did_api_key}"})
         data = res.json()
         if data.get("status") == "done":
             return data.get("result_url")
-        time.sleep(3)
+        time.sleep(2)
 
-# 🌐 Streamlit 인터페이스
-st.title("🌤️ 수원 날씨 AI 리포터")
+# ✅ Streamlit UI
+st.title("🌤️ 대전 KAIST AI 날씨 리포터")
 
-if st.button("날씨 영상 생성"):
+if st.button("▶️ 오늘 날씨 영상 생성"):
     summary = get_weather()
     st.success("✅ 요약 완료:")
     st.text(summary)
 
     ment = generate_gpt_ment(summary)
-    st.success("🗣️ 멘트 생성 완료:")
+    st.success("🗣️ GPT 멘트:")
     st.text(ment)
 
     talk_id = create_did_video(ment)
-    st.info("📡 영상 생성 중입니다. 잠시만 기다려주세요...")
+    st.info("🎥 영상 생성 중...")
 
     video_url = get_video_url(talk_id)
     st.video(video_url)
