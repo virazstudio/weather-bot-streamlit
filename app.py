@@ -134,7 +134,7 @@ if st.button("▶️ 오늘 날씨 영상 생성"):
     st.text(summary)
 
     ment = generate_gpt_ment(summary)
-    st.success("🗣️ GPT 멘트:")
+    st.success("🗣️ AI아나운서 자동완성 대본:")
     st.text(ment)
 
     talk_id = create_did_video(ment)
